@@ -10,14 +10,14 @@ import util
 
 
 class JobCluster(object):
-    def __init__(self, classad):
-        self.jobad = classad
+    def __init__(self, ad):
+        self.jobad = ad
 
     @staticmethod
     def read_file(path):
         proc = util.command_fp('condor_submit -dump - %s' % path)
-        ad = classad.parseAds(proc.stdout, parser=classad.Parser.Old)
-        return ad
+        aditer = classad.parseAds(proc.stdout, parser=classad.Parser.Old)
+        return aditer
 
     @classmethod
     def from_file(cls, path):
@@ -28,5 +28,9 @@ class JobCluster(object):
             # FIXME: I know this doesn't work...
             return [cls(x) for x in jobs]
 
-    def from_dict(cls, dict):
-        self.ad = ad
+    @classmethod
+    def from_dictionary(cls, d):
+        return cls(classad.ClassAd(d))
+
+    def __str__(self):
+        return str(self.jobad)

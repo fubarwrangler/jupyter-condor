@@ -1,7 +1,7 @@
 Universe        = vanilla
 
-Notification    = Never 
-Executable      = ../src/memuser
+Notification    = Never
+Executable      = tests/code/memuser
 Arguments       = -s 10 -d 2 -m 2G -t 900
 GetEnv          = False
 
