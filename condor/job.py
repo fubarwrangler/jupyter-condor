@@ -1,39 +1,32 @@
 #!/usr/bin/python
 
+import classad
 import htcondor
 import tempfile
 import sys
 import os
 
-# schedd = htcondor.Schedd()
-#
-# filelist = sys.argv[1:]
-# code = sys.stdin.read()
-#
-# fd, pyfilename = tempfile.mkstemp(suffix='.py', dir='workdir')
-# pyfile = os.fdopen(fd, 'w')
-# pyfile.write(code)
-# pyfile.close()
-#
-jobdef = {
-    'Executable': '/usr/bin/python',
-    'Arguments': pyfilename,
-    'Output': 'foo.$(Clusterid).$(Procid)',
-}
-#
-# submit = htcondor.Submit(jobdef)
-# with schedd.transaction() as tx:
-#     for f in filelist:
-#         submit["Input"] = f
-#         submit.queue(tx)
+import util
 
 
 class JobCluster(object):
-    def __init__(self, command, args, env=None):
-        self.command = command
-        self.args = args
-        self.env = os.environ if env is None else env
+    def __init__(self, classad):
+        self.jobad = classad
 
-    def from_file(path):
-        o, _, _ = util.command('condor_submit -dump %s' % path)
-        print o
+    @staticmethod
+    def read_file(path):
+        proc = util.command_fp('condor_submit -dump - %s' % path)
+        ad = classad.parseAds(proc.stdout, parser=classad.Parser.Old)
+        return ad
+
+    @classmethod
+    def from_file(cls, path):
+        jobs = list(cls.read_file(path))
+        if len(jobs) == 1:
+            return cls(jobs[0])
+        else:
+            # FIXME: I know this doesn't work...
+            return [cls(x) for x in jobs]
+
+    def from_dict(cls, dict):
+        self.ad = ad

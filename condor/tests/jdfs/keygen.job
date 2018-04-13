@@ -1,0 +1,19 @@
+Universe = vanilla
+Executable = tests/code/keygen.sh
+Arguments = $(bits)
+
+transfer_output_files = moduli.$(bits)
+transfer_output_remaps = "moduli.$(bits)=moduli.$(bits)-job-$(cluster).$(process)"
+when_to_transfer_output = on_exit_or_evict
+log = keygen.$(cluster).log
+
+
+request_memory = 200M
+
+bits = 4096
+rank = mips
+Queue 1
+
+bits = 2048
+rank = kflops
+Queue 2

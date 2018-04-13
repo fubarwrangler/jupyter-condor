@@ -1,0 +1,20 @@
+Universe        = vanilla
+
+Notification    = Never 
+Executable      = ../src/memuser
+Arguments       = -s 10 -d 2 -m 2G -t 900
+GetEnv          = False
+
+periodic_hold = (NumJobStarts >= 1 && JobStatus == 1)
+Input           = /dev/null
+Log             = ../junk/memprof.$(cluster).log
+Output = ../junk/memprof.$(cluster).out
+Error = ../junk/memprof.$(cluster).out
+
+
+request_memory = 2.1G
+
+#+Experiment     = "phenix"
++Job_Type       = "himem"
+
+Queue 1
