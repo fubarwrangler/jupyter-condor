@@ -1,0 +1,11 @@
+Universe = vanilla
+Executable = tests/code/longsum.sh
+Arguments = $(Infile) tests/output/$Fnx(Infile).$(ProcId)
+
+#InitialDir = output/
+
+log = longsum.$(cluster).log
+
+request_memory = 6M
+
+Queue Infile matching files (tests/data/rand.*)

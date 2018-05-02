@@ -29,8 +29,11 @@ class JobCluster(object):
             return [cls(x) for x in jobs]
 
     @classmethod
-    def from_dictionary(cls, d):
+    def from_ad_dict(cls, d):
         return cls(classad.ClassAd(d))
+
+    def from_dict(f):
+        pass
 
     def __str__(self):
         return str(self.jobad)
