@@ -8,6 +8,7 @@ def command_str(arg):
     o, e = proc.communicate()
     return o, e, proc.returncode
 
+
 def command_fp(arg):
-    """ Return output, error, and return value of shelling out @arg """
+    """ Return process-descriptor Popen for @arg """
     return Popen(shlex.split(arg), stdout=PIPE, stderr=PIPE)

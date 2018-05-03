@@ -2,52 +2,69 @@
 
 import classad
 import htcondor
-import pprint
-import tempfile
-import sys
+import logging
 import os
 
 import util
 
 
+class JobException(Exception):
+    pass
+
+
+logging.basicConfig(format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+                    level=logging.INFO)
+log = logging.getLogger(__name__)
+
+
 class JobCluster(object):
 
-    def __init__(self, ad):
+    def __init__(self, job=None, ad=None, file=None):
 
-        self.jobad = ad
+        if [x is not None for x in (job, ad, file)].count(True) > 1:
+            log.error("Must specify a job with either ad or file or job, no more")
+            raise JobException("Invalid Job")
+        self.job = job
+        self.ad = ad
         self.jdf = file
-        self.schedd = htcondor.Schedd()
 
-    @staticmethod
-    def read_file(path):
-        proc = util.command_fp('condor_submit -dump - %s' % path)
-        aditer = classad.parseAds(proc.stdout, parser=classad.Parser.Old)
-        return aditer
+        self.schedd = htcondor.Schedd()
 
     @classmethod
     def from_file(cls, path):
-        jobs = list(cls.read_file(path))
-        if len(jobs) == 1:
-            return cls(ad=jobs)
-        else:
-            # FIXME: I know this doesn't work...
-            return cls(ad=jobs)
+        if not os.path.exists(path):
+            log.warning("Unable to find job-description %s", path)
+            return None
+        return cls(file=path)
 
     @classmethod
     def from_ad_dict(cls, d):
-        return cls(classad.ClassAd(d))
+        return cls(ad=classad.ClassAd(d))
 
     def __str__(self):
         return str(self.jobad)
 
+    def _submit_jdf(self):
+        o, e, r = util.command_str('condor_submit -terse "{}"'.format(self.jdf))
+        if e or r != 0:
+            log.error("Error in condor_submit (rv=%d):\nMsg: %s\nErr: %s", r, o, e)
+            return None
+        ranges = [x.strip() for x in o.split('-')]
+        print ranges
+        self.cid = int(ranges[0].split('.')[0])
+        self.nproc = int(ranges[1].split('.')[1])
+        return self.cid
+
     def submit(self):
-        if len(self.jobad) == 1:
-            self.cid = self.schedd.submit(self.jobad[0])
-            # sub = htcondor.Submit(self.jobad)
-            # with self.schedd.transaction() as txn:
-            #     self.cid = sub.queue(txn)
-        elif len(self.jobad) > 1:
-            clusters = [(x, 1) for x in self.jobad[1:]]
-            print clusters
-            ads = []
-            self.cid = self.schedd.submitMany(self.jobad[0], clusters, False, ads)
+        if self.jdf:
+            return self._submit_jdf()
+        elif self.ad:
+            pass
+        else:
+            return self._submit_new()
+
+    def _submit_new(self):
+        with self.schedd.transaction() as txn:
+            job = htcondor.Submit(self.job)
+            self.nproc = 1
+            return job.queue(txn)
