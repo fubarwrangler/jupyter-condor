@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
 import job
+import sys
 
-print job.JobCluster.from_file('tests/jdfs/memtest.job')
+job = job.JobCluster.from_file(sys.argv[1])
+job.submit()

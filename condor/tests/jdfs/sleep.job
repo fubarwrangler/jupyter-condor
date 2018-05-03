@@ -1,0 +1,6 @@
+Universe        = vanilla
+Executable      = /bin/sleep
+Arguments       = 10
+Log             = sleep.$(cluster).log
+
+Queue
