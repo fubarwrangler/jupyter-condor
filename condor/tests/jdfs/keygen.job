@@ -14,6 +14,9 @@ bits = 4096
 rank = mips
 Queue 1
 
+bits = 8192
+Queue 3
+
 bits = 2048
 rank = kflops
 Queue 2

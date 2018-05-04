@@ -7,5 +7,5 @@ fi
 echo "Reading $1, Writing to $2"
 sleep 30
 sha256sum "$1" > "$2"
-sleep $(( $RANDOM%20 + 30 ))
+sleep $(( $RANDOM%30 + 30 ))
 echo "Done"
