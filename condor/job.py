@@ -97,14 +97,26 @@ class JobCluster(object):
         if not self.cid:
             raise JobException("Cannot wait(), job not submitted")
 
-    def remove(self):
-        return self.schedd.act(htcondor.JobAction.Remove, 'ClusterId == %d' % self.cid)
+    @property
+    def status(self):
+        for x in self._query(['ProcId', 'JobStatus']):
+            pass
 
-    def hold(self):
-        return self.schedd.act(htcondor.JobAction.Hold, 'ClusterId == %d' % self.cid)
 
-    def release(self):
-        return self.schedd.act(htcondor.JobAction.Release, 'ClusterId == %d' % self.cid)
+# All properties of htcondor.JobAction that start with an upper-case letter
+# are enum-like actions, so we create a method on the class for each of these
+# actions (named the action but lower case, e.g. Hold -> hold() ) calling
+# Schedd.act(action, cluster) and returning the result.
+for act in (x for x in dir(htcondor.JobAction) if x[0].isupper()):
+    method_name = act.lower()
+    condor_method = getattr(htcondor.JobAction, act)
 
-    def vacate(self):
-        return self.schedd.act(htcondor.JobAction.Vacate, 'ClusterId == %d' % self.cid)
+    def method(self, action=condor_method):
+        if not self.cid:
+            raise JobException('Cannot act upon a job not in the queue')
+        print action
+        return self.schedd.act(action, 'ClusterId == %d' % self.cid)
+
+    print method
+
+    setattr(JobCluster, method_name, method)
