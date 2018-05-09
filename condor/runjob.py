@@ -7,5 +7,9 @@ import sys
 # print job.submit()
 
 
-j = job.JobCluster({"Executable": "/bin/sleep", "Arguments": '2000'})
-print j.submit()
+# j = job.Job({"Executable": "/bin/sleep", "Arguments": '2000'})
+# print j.submit()
+
+
+j = job.Job.from_queue(98)
+# print j.submit()

@@ -17,70 +17,67 @@ logging.basicConfig(format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
 log = logging.getLogger(__name__)
 
 
-class JobCluster(object):
+class Job(object):
+    def __init__(self, job=None, ad=None):
 
-    def __init__(self, job=None, ad=None, file=None):
-
-        if [x is not None for x in (job, ad, file)].count(True) > 1:
-            log.error("Must specify a job with either ad or file or job, no more")
+        if job and ad:
+            log.error("Must specify a job with either ad or job, no more")
             raise JobException("Invalid Job")
         self.job = job
         self.ad = ad
-        self.jdf = file
-        self._jobdata = list()
+        self._jobdata = None
+        self.cid = None
+        self.pid = 0
 
         self.schedd = htcondor.Schedd()
-
-    @classmethod
-    def from_file(cls, path):
-        if not os.path.exists(path):
-            log.warning("Unable to find job-description %s", path)
-            return None
-        return cls(file=path)
 
     @classmethod
     def from_ad_dict(cls, d):
         return cls(ad=classad.ClassAd(d))
 
     @classmethod
-    def from_queue(cls, clusterid):
+    def from_queue(cls, jobid, procid=0):
         sched = htcondor.Schedd()
-        const = 'ClusterId == %d' % clusterid
+        if isinstance(jobid, int):
+            _cid = jobid
+            _pid = procid
+        elif isinstance(jobid, str):
+            if '.' in jobid:
+                _cid, _pid = map(int, jobid.split('.'))
+            else:
+                _cid = int(jobid)
+                _pid = procid
+        else:
+            raise JobException('%s.from_queue needs a string or int for jobid' % cls.__name__)
+
+        const = 'ClusterId == %d && ProcId == %d' % (_cid, _pid)
         j = cls()
-        for x in sched.xquery(const):
-            j._jobdata.append(x)
-        if len(j._jobdata) == 0:
-            raise JobException("Job %d not found in queue" % clusterid)
-        j.cid = clusterid
+        l = list(sched.xquery(const))
+
+        if len(l) < 1:
+            raise JobException("Job %s not found in queue" % jobid)
+        elif len(l) > 1:
+            raise Exception('Bug! Should not happen, must return 1 job')
+        j._jobdata = l
+        j.cid = _cid
         return j
 
     def __str__(self):
         return str(self.jobad)
 
-    def _submit_jdf(self):
-        o, e, r = util.command_str('condor_submit -terse "{}"'.format(self.jdf))
-        if e or r != 0:
-            log.error("Error in condor_submit (rv=%d):\nMsg: %s\nErr: %s", r, o, e)
-            return None
-        ranges = [x.strip() for x in o.split('-')]
-        print ranges
-        self.cid = int(ranges[0].split('.')[0])
-        self.nproc = int(ranges[1].split('.')[1])
-        for x in self._query():
-            self._jobdata.append(x)
-        return self.cid
+    @property
+    def _constraint(self):
+        return 'ClusterId == %d && ProcId == %d' % (self.cid, self.pid)
 
     def _query(self, projection=[], procid=None):
         aditer = self.schedd.xquery(projection=projection,
-                                    requirements='ClusterId == %d' % self.cid)
+                                    requirements=self._constraint)
         return aditer
 
     def submit(self):
         if self._jobdata:
             raise JobException("Job already submitted!")
-        if self.jdf:
-            return self._submit_jdf()
-        elif self.ad:
+        if self.ad:
             return self._submit_ad()
         else:
             self.cid = self._submit_new()
@@ -89,8 +86,10 @@ class JobCluster(object):
     def _submit_new(self):
         with self.schedd.transaction() as txn:
             job = htcondor.Submit(self.job)
-            self.nproc = 1
             return job.queue(txn, ad_results=self._jobdata)
+
+    def _submit_old(self):
+        return self.schedd.submit(self.ad, count=1, ad_results=self._jobdata)
 
     def wait(self):
         """ Wait for a job to finish """
@@ -99,8 +98,42 @@ class JobCluster(object):
 
     @property
     def status(self):
-        for x in self._query(['ProcId', 'JobStatus']):
-            pass
+        return int(list(self._query(['JobStatus']))[0]['JobStatus'])
+
+
+class JobCluster(Job):
+
+    def __init__(self, clusterid=None):
+        super(JobCluster, self).__init__(job=None, ad=None)
+        self._jobdata = list()
+        self.nproc = 0
+        if clusterid:
+            self.cid = clusterid
+            for x in self.schedd.xquery('Clusterid == %d' % self.cid):
+                self._jobdata.append(x)
+            if len(self._jobdata) == 0:
+                raise JobException("Job %d not found in queue" % self.cid)
+            self.nproc = len(self._jobdata)
+
+    @property
+    def _constraint(self):
+        return 'ClusterId == %d' % self.cid
+
+    def __str__(self):
+        return str(self.jobad)
+
+    def _query(self, projection=[], procid=None):
+        aditer = self.schedd.xquery(projection=projection,
+                                    requirements=self._constraint)
+        return aditer
+
+    def submit(self):
+        if self._jobdata:
+            raise JobException("Job already submitted!")
+
+    @property
+    def status(self):
+        return {ad['ProcId']: ad['JobStatus'] for ad in self._query(['ProcId', 'JobStatus'])}
 
 
 # All properties of htcondor.JobAction that start with an upper-case letter
