@@ -58,7 +58,7 @@ class Job(object):
             raise JobException("Job %s not found in queue" % jobid)
         elif len(l) > 1:
             raise Exception('Bug! Should not happen, must return 1 job')
-        j._jobdata = l
+        j._jobdata = l[0]
         j.cid = _cid
         return j
 
@@ -95,6 +95,14 @@ class Job(object):
         """ Wait for a job to finish """
         if not self.cid:
             raise JobException("Cannot wait(), job not submitted")
+
+    def update(self):
+        self._jobdata = list(self._query())[0]
+
+    def get(self, attr, refresh=False):
+        if refresh:
+            self.update()
+        return self._jobdata[attr]
 
     @property
     def status(self):
@@ -147,9 +155,6 @@ for act in (x for x in dir(htcondor.JobAction) if x[0].isupper()):
     def method(self, action=condor_method):
         if not self.cid:
             raise JobException('Cannot act upon a job not in the queue')
-        print action
         return self.schedd.act(action, 'ClusterId == %d' % self.cid)
-
-    print method
 
     setattr(JobCluster, method_name, method)
