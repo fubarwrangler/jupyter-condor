@@ -2,6 +2,7 @@
 
 import classad
 import htcondor
+import tempfile
 import logging
 import os
 
@@ -111,10 +112,15 @@ class Job(object):
 
 class JobCluster(Job):
 
-    def __init__(self, clusterid=None):
+    def __init__(self, clusterid=None, jdf=None, jdfstr=None):
         super(JobCluster, self).__init__(job=None, ad=None)
         self._jobdata = list()
         self.nproc = 0
+        if jdf and jdfstr:
+            raise JobException('Cannot specify both jdf and jdfstr')
+        self.jdf = jdf
+        self.jdfstr = jdfstr
+
         if clusterid:
             self.cid = clusterid
             for x in self.schedd.xquery('Clusterid == %d' % self.cid):
@@ -139,6 +145,40 @@ class JobCluster(Job):
         if self._jobdata:
             raise JobException("Job already submitted!")
 
+    def get(self, attr, refresh=False):
+        if refresh:
+            self.update()
+        return {ad['ProcId']: ad[attr] for ad in self._jobdata}
+
+    @staticmethod
+    def _submit_jdf(path):
+        o, e, r = util.command_str('condor_submit -terse "{}"'.format(path))
+        if e or r != 0:
+            log.error("Error in condor_submit (rv=%d):\nMsg: %s\nErr: %s", r, o, e)
+            return None
+        ranges = [x.strip() for x in o.split('-')]
+        cid = int(ranges[0].split('.')[0])
+        nproc = int(ranges[1].split('.')[1])
+        return cid, nproc
+
+    def submit(self):
+        if self.jdfstr:
+            fd, nam = tempfile.mkstemp()
+            stream = fdopen(fd)
+            stream.write(self.jdfstr)
+            path = nam
+            stream.close()
+        else:
+            path = self.jdf
+        self.cid, self.nproc = self._submit_jdf(path)
+
+    def from_jdf(cls, path):
+        j = cls(jdf=path)
+        j.cid, j.nproc = j.submit()
+
+    def update(self):
+        self._jobdata = list(self._query())
+
     @property
     def status(self):
         return {ad['ProcId']: ad['JobStatus'] for ad in self._query(['ProcId', 'JobStatus'])}
@@ -158,3 +198,4 @@ for act in (x for x in dir(htcondor.JobAction) if x[0].isupper()):
         return self.schedd.act(action, 'ClusterId == %d' % self.cid)
 
     setattr(JobCluster, method_name, method)
+    setattr(Job, method_name, method)
