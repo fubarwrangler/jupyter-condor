@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 
 
 class Job(object):
+
     def __init__(self, job=None, ad=None):
 
         if job and ad:
@@ -49,7 +50,8 @@ class Job(object):
                 _cid = int(jobid)
                 _pid = procid
         else:
-            raise JobException('%s.from_queue needs a string or int for jobid' % cls.__name__)
+            raise JobException(
+                '%s.from_queue needs a string or int for jobid' % cls.__name__)
 
         const = 'ClusterId == %d && ProcId == %d' % (_cid, _pid)
         j = cls()
@@ -154,8 +156,9 @@ class JobCluster(Job):
     def _submit_jdf(path):
         o, e, r = util.command_str('condor_submit -terse "{}"'.format(path))
         if e or r != 0:
-            log.error("Error in condor_submit (rv=%d):\nMsg: %s\nErr: %s", r, o, e)
-            return None
+            log.error(
+                "Error in condor_submit (rv=%d):\nMsg: %s\nErr: %s", r, o, e)
+            raise JobException("condor_submit failed: %s", e)
         ranges = [x.strip() for x in o.split('-')]
         cid = int(ranges[0].split('.')[0])
         nproc = int(ranges[1].split('.')[1])
@@ -171,6 +174,7 @@ class JobCluster(Job):
         else:
             path = self.jdf
         self.cid, self.nproc = self._submit_jdf(path)
+        return self.cid
 
     def from_jdf(cls, path):
         j = cls(jdf=path)
@@ -184,18 +188,32 @@ class JobCluster(Job):
         return {ad['ProcId']: ad['JobStatus'] for ad in self._query(['ProcId', 'JobStatus'])}
 
 
+class JobGroup(JobCluster):
+
+    def __init__(self, clusterids):
+        super(JobGroup, self).__init__()
+        self.cid = clusterids
+
+    @property
+    def _constraint(self):
+        return 'stringListMember(string(ClusterId), "%s")' % ','.join(map(str, self.cid))
+
+    @property
+    def status(self):
+        return {'%d.%d'% (ad['ClusterId'], ad['ProcId']): ad['JobStatus']
+                for ad in self._query(['ClusterId', 'ProcId', 'JobStatus'])}
+
+
 # All properties of htcondor.JobAction that start with an upper-case letter
 # are enum-like actions, so we create a method on the class for each of these
 # actions (named the action but lower case, e.g. Hold -> hold() ) calling
 # Schedd.act(action, cluster) and returning the result.
-for act in (x for x in dir(htcondor.JobAction) if x[0].isupper()):
+for act, condor_method in htcondor.JobAction.names.iteritems():
     method_name = act.lower()
-    condor_method = getattr(htcondor.JobAction, act)
 
     def method(self, action=condor_method):
         if not self.cid:
             raise JobException('Cannot act upon a job not in the queue')
-        return self.schedd.act(action, 'ClusterId == %d' % self.cid)
+        return self.schedd.act(action, self._constraint)
 
-    setattr(JobCluster, method_name, method)
     setattr(Job, method_name, method)
