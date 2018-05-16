@@ -111,6 +111,15 @@ class Job(object):
     def status(self):
         return int(list(self._query(['JobStatus']))[0]['JobStatus'])
 
+    def wait(self, poll_delay=30.0):
+        """ This is very bad, need to replace with one to watch log """
+        while True:
+            l = list(self._query(['JobStatus']))
+            print l
+            if len(l) == 0:
+                break
+            time.sleep(poll_delay)
+
 
 class JobCluster(Job):
 
@@ -174,11 +183,15 @@ class JobCluster(Job):
         else:
             path = self.jdf
         self.cid, self.nproc = self._submit_jdf(path)
-        return self.cid
+        if self.jdfstr:
+            os.unlink(nam)
+        return self.cid, self.nproc
 
+    @classmethod
     def from_jdf(cls, path):
         j = cls(jdf=path)
         j.cid, j.nproc = j.submit()
+        return j
 
     def update(self):
         self._jobdata = list(self._query())

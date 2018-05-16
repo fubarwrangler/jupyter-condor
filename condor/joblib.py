@@ -2,6 +2,9 @@ from job import Job, JobCluster, JobGroup
 import htcondor
 import classad
 
+import tempfile
+import cloudpickle
+
 
 class CondorMapper(object):
 
@@ -27,10 +30,13 @@ class CondorMapper(object):
         return JobGroup(cids)
 
 
+def condormap(fn, data):
+    fd, name = tempfile.mkstemp(prefix='cmap')
+    fp = fdopen(fd, 'w')
+    fndata = cloudpickle.dump(fn, fp)
+    fp.close()
+    
+
+
 if __name__ == "__main__":
     import glob
-
-    g = CondorMapper('tests/code/longsum.sh',
-                     zip(sorted(glob.glob('tests/data/rand.*')),
-                         ['tests/output/out.%d' % (x+1) for x in range(9)]),
-                         '{0} {1}').submit()
