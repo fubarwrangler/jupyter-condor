@@ -4,7 +4,10 @@ import classad
 
 import tempfile
 import cloudpickle
+import collections
+import time
 
+import os.path as path
 
 class CondorMapper(object):
 
@@ -30,13 +33,21 @@ class CondorMapper(object):
         return JobGroup(cids)
 
 
+def logistic(r, len=100):
+    d = collections.deque(maxlen=len)
+    x = 0.4
+    for _ in xrange(5 * 10**7):
+        x = x * r * (1.0 - x)
+        d.append(x)
+    return list(d)
+
+
+
 def condormap(fn, data):
-    fd, name = tempfile.mkstemp(prefix='cmap')
-    fp = fdopen(fd, 'w')
-    fndata = cloudpickle.dump(fn, fp)
-    fp.close()
-    
 
+    mydir = tempfile.mkdtemp()
+    func = path.join(mydir, 'fn.pkl')
 
-if __name__ == "__main__":
-    import glob
+    cloudpickle.dump(fn, open(, 'w'))
+
+    {'Executable': }
