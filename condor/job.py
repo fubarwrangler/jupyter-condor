@@ -4,6 +4,7 @@ import classad
 import htcondor
 import tempfile
 import logging
+import time
 import os
 
 import util
@@ -13,8 +14,12 @@ class JobException(Exception):
     pass
 
 
+# Transitions that indicate the job is not running anymore
+TERMINAL_TRANS = (2, 5, 9, 12)
+
+
 logging.basicConfig(format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-                    level=logging.INFO)
+                    level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 
@@ -95,9 +100,14 @@ class Job(object):
         return self.schedd.submit(self.ad, count=1, ad_results=self._jobdata)
 
     def wait(self):
-        """ Wait for a job to finish """
         if not self.cid:
             raise JobException("Cannot wait(), job not submitted")
+
+        log = self.get('UserLog')
+        if not log:
+            return self.wait_poll(60)
+        else:
+            return self.wait_log(log)
 
     def update(self):
         self._jobdata = list(self._query())[0]
@@ -111,14 +121,40 @@ class Job(object):
     def status(self):
         return int(list(self._query(['JobStatus']))[0]['JobStatus'])
 
-    def wait(self, poll_delay=30.0):
+    def wait_poll(self, poll_delay=20.0):
         """ This is very bad, need to replace with one to watch log """
         while True:
             l = list(self._query(['JobStatus']))
-            print l
             if len(l) == 0:
                 break
             time.sleep(poll_delay)
+
+    def wait_log(self, log):
+        """ Wait for a job to finish """
+
+        fp = open(log)
+        events = htcondor.read_events(fp)
+
+        data = {}
+        while True:
+            try:
+                r = events.next()
+            except StopIteration:
+                time.sleep(0.2)
+            else:
+                self.process_event(r, data)
+                print data
+                if self._is_terminal(data):
+                    break
+        print "all jobs terminal"
+
+        @staticmethod
+        def process_event(event, data):
+            data[self.cid] = event['EventTypeNumber']
+
+        @staticmethod
+        def _is_terminal(data):
+            return data.values()[0] in TERMINAL_TRANS
 
 
 class JobCluster(Job):
@@ -152,10 +188,6 @@ class JobCluster(Job):
                                     requirements=self._constraint)
         return aditer
 
-    def submit(self):
-        if self._jobdata:
-            raise JobException("Job already submitted!")
-
     def get(self, attr, refresh=False):
         if refresh:
             self.update()
@@ -174,9 +206,11 @@ class JobCluster(Job):
         return cid, nproc
 
     def submit(self):
+        if self._jobdata:
+            raise JobException("Job already submitted!")
         if self.jdfstr:
             fd, nam = tempfile.mkstemp()
-            stream = fdopen(fd)
+            stream = os.fdopen(fd)
             stream.write(self.jdfstr)
             path = nam
             stream.close()
@@ -200,6 +234,15 @@ class JobCluster(Job):
     def status(self):
         return {ad['ProcId']: ad['JobStatus'] for ad in self._query(['ProcId', 'JobStatus'])}
 
+    @staticmethod
+    def process_event(event, data):
+        jobkey = '%d.%d' % (event['Cluster'], event['Proc'])
+        data[jobkey] = event['EventTypeNumber']
+
+    @staticmethod
+    def _is_terminal(data):
+        return all(x in TERMINAL_TRANS for x in data.values())
+
 
 class JobGroup(JobCluster):
 
@@ -213,7 +256,7 @@ class JobGroup(JobCluster):
 
     @property
     def status(self):
-        return {'%d.%d'% (ad['ClusterId'], ad['ProcId']): ad['JobStatus']
+        return {'%d.%d' % (ad['ClusterId'], ad['ProcId']): ad['JobStatus']
                 for ad in self._query(['ClusterId', 'ProcId', 'JobStatus'])}
 
 
