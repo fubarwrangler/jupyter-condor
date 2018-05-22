@@ -78,6 +78,7 @@ class Job(object):
         return 'ClusterId == %d && ProcId == %d' % (self.cid, self.pid)
 
     def _query(self, projection=[], procid=None):
+        log.debug("Run query: %s", projection)
         aditer = self.schedd.xquery(projection=projection,
                                     requirements=self._constraint)
         return aditer
@@ -85,11 +86,9 @@ class Job(object):
     def submit(self):
         if self._jobdata:
             raise JobException("Job already submitted!")
-        if self.ad:
-            return self._submit_ad()
-        else:
-            self.cid = self._submit_new()
-            return self.cid
+        self.cid = self._submit_ad() if self.ad else self._submit_new()
+        self.update()
+        return self.cid
 
     def _submit_new(self):
         with self.schedd.transaction() as txn:
@@ -103,11 +102,13 @@ class Job(object):
         if not self.cid:
             raise JobException("Cannot wait(), job not submitted")
 
-        log = self.get('UserLog')
-        if not log:
-            return self.wait_poll(60)
+        ulog = self.userlog
+        if not ulog:
+            log.warning("Wait() Called without UserLog, polling schedd (this is bad)")
+            return self.wait_poll(20)
         else:
-            return self.wait_log(log)
+            log.debug("wait() called, watching userlog %s", ulog)
+            return self.wait_log(ulog)
 
     def update(self):
         self._jobdata = list(self._query())[0]
@@ -115,11 +116,15 @@ class Job(object):
     def get(self, attr, refresh=False):
         if refresh:
             self.update()
-        return self._jobdata[attr]
+        return self._jobdata[attr] if attr in self._jobdata else None
 
     @property
     def status(self):
         return int(list(self._query(['JobStatus']))[0]['JobStatus'])
+
+    @property
+    def userlog(self):
+        return self.get('UserLog')
 
     def wait_poll(self, poll_delay=20.0):
         """ This is very bad, need to replace with one to watch log """
@@ -129,10 +134,17 @@ class Job(object):
                 break
             time.sleep(poll_delay)
 
-    def wait_log(self, log):
+    def process_event(self, event, data):
+        data[self.cid] = event['EventTypeNumber']
+
+    @staticmethod
+    def _is_terminal(data):
+        return data.values()[0] in TERMINAL_TRANS
+
+    def wait_log(self, ulog):
         """ Wait for a job to finish """
 
-        fp = open(log)
+        fp = open(ulog)
         events = htcondor.read_events(fp)
 
         data = {}
@@ -140,21 +152,14 @@ class Job(object):
             try:
                 r = events.next()
             except StopIteration:
-                time.sleep(0.2)
+                log.debug("No Event but stopiter")
+                time.sleep(2.2)
             else:
                 self.process_event(r, data)
-                print data
+                log.debug(data)
                 if self._is_terminal(data):
                     break
-        print "all jobs terminal"
-
-        @staticmethod
-        def process_event(event, data):
-            data[self.cid] = event['EventTypeNumber']
-
-        @staticmethod
-        def _is_terminal(data):
-            return data.values()[0] in TERMINAL_TRANS
+        log.debug("all jobs terminal")
 
 
 class JobCluster(Job):
@@ -234,10 +239,18 @@ class JobCluster(Job):
     def status(self):
         return {ad['ProcId']: ad['JobStatus'] for ad in self._query(['ProcId', 'JobStatus'])}
 
-    @staticmethod
-    def process_event(event, data):
+    def process_event(self, event, data):
         jobkey = '%d.%d' % (event['Cluster'], event['Proc'])
         data[jobkey] = event['EventTypeNumber']
+
+    @property
+    def userlog(self):
+        l = self.get('UserLog')
+        log.debug(l)
+        if l and len(set(l.values())) == 1:
+            return l.values()[0]
+        else:
+            return None
 
     @staticmethod
     def _is_terminal(data):
