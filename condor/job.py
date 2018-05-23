@@ -224,6 +224,7 @@ class JobCluster(Job):
         self.cid, self.nproc = self._submit_jdf(path)
         if self.jdfstr:
             os.unlink(nam)
+        self.update()
         return self.cid, self.nproc
 
     @classmethod
@@ -262,6 +263,7 @@ class JobGroup(JobCluster):
     def __init__(self, clusterids):
         super(JobGroup, self).__init__()
         self.cid = clusterids
+        self.update()
 
     @property
     def _constraint(self):

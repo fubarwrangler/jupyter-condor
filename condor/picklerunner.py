@@ -4,12 +4,11 @@ import sys
 
 import os
 
-print os.getcwd()
+print >>sys.stderr, os.getcwd()
 scratch_dir = os.getenv('TEMP')
 os.chdir(scratch_dir)
-print os.getcwd()
 
-data = sys.argv[2]
 code = cloudpickle.load(open(sys.argv[1]))
+data = cloudpickle.load(sys.stdin)
 
-cloudpickle.dump(code(data), open('output', 'w'))
+cloudpickle.dump(code(data), sys.stdout)
