@@ -5,6 +5,7 @@ import classad
 import tempfile
 import cloudpickle
 import collections
+import numpy
 import time
 import glob
 import os
@@ -38,7 +39,7 @@ class CondorMapper(object):
         return JobGroup(cids)
 
 
-def logistic(r, len=4):
+def logistic(r, len=40):
     d = collections.deque(maxlen=len)
     x = 0.4
     for _ in xrange(5 * 10**7):
@@ -47,7 +48,7 @@ def logistic(r, len=4):
     return list(d)
 
 
-def condormap(fn, data):
+def condormap(fn, data, batchsize=1, tmpdir=None, cleanup=True, withdata=False):
 
     mydir = tempfile.mkdtemp(prefix="cjob-", suffix="-wkdir")
     func = path.join(mydir, 'fn.pkl')
@@ -74,9 +75,18 @@ def condormap(fn, data):
     g = JobGroup(jobs)
     g.wait()
 
-    for output in sorted(glob.glob(path.join(mydir, 'out.*')),
-                         key=lambda x: int(x.split('.')[1])):
-        yield cloudpickle.load(open(output))
+    for idx, output in enumerate(sorted(glob.glob(path.join(mydir, 'out.*')),
+                                        key=lambda x: int(x.split('.')[1]))):
+        res = cloudpickle.load(open(output))
+        yield (data[idx], res) if withdata else res
+
+    if cleanup:
+        for f in os.listdir(mydir):
+            os.unlink(path.join(mydir, f))
+        os.rmdir(mydir)
 
 
-print list(condormap(logistic, [3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9]))
+for k, d in condormap(logistic, numpy.arange(3.5, 3.6, 0.005), withdata=True):
+    print sorted(d)
+    t = set(round(x, 5) for x in d)
+    print k, "Mode ", len(t)
