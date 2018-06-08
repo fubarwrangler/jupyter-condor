@@ -95,3 +95,4 @@ ENV/
 .ropeproject
 
 tests/output
+.remote-sync.json

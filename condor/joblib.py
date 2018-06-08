@@ -39,7 +39,7 @@ class CondorMapper(object):
         return JobGroup(cids)
 
 
-def logistic(r, len=40):
+def logistic(r, len=10):
     d = collections.deque(maxlen=len)
     x = 0.4
     for _ in xrange(5 * 10**7):

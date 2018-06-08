@@ -11,5 +11,7 @@ import sys
 # print j.submit()
 
 
-j = job.Job.from_queue(98)
-# print j.submit()
+base = {'executable': '/bin/sleep', '+job_type': 'jupyter', 'request_memory': '10M'}
+args = ({'arguments': '100'}, {'arguments': '150'}, {'arguments': '200'})
+
+job.JobCluster.from_data(base, args)

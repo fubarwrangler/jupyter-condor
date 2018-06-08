@@ -9,6 +9,8 @@ import os
 
 import util
 
+from distutils.version import StrictVersion
+
 
 class JobException(Exception):
     pass
@@ -16,12 +18,14 @@ class JobException(Exception):
 
 # Transitions that indicate the job is not running anymore
 TERMINAL_TRANS = (2, 5, 9, 12)
+VERSION = htcondor.version().split()[1]
 
 
 logging.basicConfig(format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
                     level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
+log.info("Iniit v %s", VERSION)
 
 class Job(object):
 
@@ -180,6 +184,23 @@ class JobCluster(Job):
             if len(self._jobdata) == 0:
                 raise JobException("Job %d not found in queue" % self.cid)
             self.nproc = len(self._jobdata)
+
+    def from_data(self, base_job, updates):
+
+        if StrictVersion(VERSION) < StrictVersion('8.7.9'):
+            raise JobException('This functionality requires python bindings '
+                               'v8.7.9 or greater (%s detected)' % VERSION)
+
+        with self.schedd.transaction() as txn:
+            for p in updates:
+                base_job.update(p)
+                log.debug("Submitting %s" % base_job)
+                job = htcondor.Submit(base_job)
+                tmp = list()
+                cid = job.queue(txn, ad_results=tmp)
+                log.debug("Cid: %d", cid)
+                self._jobdata.append(tmp)
+        return cid
 
     @property
     def _constraint(self):
