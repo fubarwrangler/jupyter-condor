@@ -11,7 +11,7 @@ import sys
 # print j.submit()
 
 
-base = {'executable': '/bin/sleep', '+job_type': 'jupyter', 'request_memory': '10M'}
-args = ({'arguments': '100'}, {'arguments': '150'}, {'arguments': '200'})
+base = {'executable': '/bin/sleep', '+job_type': '"jupyter"', 'request_memory': '10M'}
+args = ({'arguments': '100'}, {'arguments': '150'}, {'arguments': '200', '+job_type': '"foo"'})
 
-job.JobCluster.from_data(base, args)
+job.JobGroup.from_data(base, args)

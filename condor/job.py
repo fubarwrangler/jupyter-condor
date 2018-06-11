@@ -185,23 +185,6 @@ class JobCluster(Job):
                 raise JobException("Job %d not found in queue" % self.cid)
             self.nproc = len(self._jobdata)
 
-    def from_data(self, base_job, updates):
-
-        if StrictVersion(VERSION) < StrictVersion('8.7.9'):
-            raise JobException('This functionality requires python bindings '
-                               'v8.7.9 or greater (%s detected)' % VERSION)
-
-        with self.schedd.transaction() as txn:
-            for p in updates:
-                base_job.update(p)
-                log.debug("Submitting %s" % base_job)
-                job = htcondor.Submit(base_job)
-                tmp = list()
-                cid = job.queue(txn, ad_results=tmp)
-                log.debug("Cid: %d", cid)
-                self._jobdata.append(tmp)
-        return cid
-
     @property
     def _constraint(self):
         return 'ClusterId == %d' % self.cid
@@ -279,6 +262,7 @@ class JobCluster(Job):
         return all(x in TERMINAL_TRANS for x in data.values())
 
 
+
 class JobGroup(JobCluster):
 
     def __init__(self, clusterids):
@@ -286,14 +270,54 @@ class JobGroup(JobCluster):
         self.cid = clusterids
         self.update()
 
+    @staticmethod
+    def collapse_ranges(cids, batch_size=3):
+        def rangify(data):
+            start = 0
+            stop = 0
+            for n in sorted(data):
+                if stop + 1 == n:
+                    stop += 1
+                else:
+                    if start > 0 or n == 0:
+                        yield start, stop
+                    start = n
+                    stop = n
+            yield start, stop
+        others = list()
+        for a, b in rangify(cids):
+            if b - a > batch_size:
+                yield 'ClusterId >= {} && ClusterId < {}'.format(a, b)
+            else:
+                others.append(range(a, b + 1))
+        yield 'stringListMember(string(ClusterId), "{}")'.format(','.join(map(str, others)))
+
     @property
     def _constraint(self):
-        return 'stringListMember(string(ClusterId), "%s")' % ','.join(map(str, self.cid))
+        return '||'.join(self.collapse_ranges(self.cids, batch_size=4))
 
     @property
     def status(self):
         return {'%d.%d' % (ad['ClusterId'], ad['ProcId']): ad['JobStatus']
                 for ad in self._query(['ClusterId', 'ProcId', 'JobStatus'])}
+
+    @classmethod
+    def from_data(cls, base_job, updates):
+
+        if StrictVersion(VERSION) < StrictVersion('8.7.9'):
+            raise JobException('This functionality requires python bindings '
+                               'v8.7.9 or greater (%s detected)' % VERSION)
+        schedd = htcondor.Schedd()
+        cids = list()
+        with schedd.transaction() as txn:
+            for p in updates:
+                base_job.update(p)
+                log.debug("Submitting %s" % base_job)
+                job = htcondor.Submit(base_job)
+                cid = job.queue(txn)
+                cids.append(cid)
+
+        return cls(cids)
 
 
 # All properties of htcondor.JobAction that start with an upper-case letter
