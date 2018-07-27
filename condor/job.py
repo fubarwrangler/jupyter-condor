@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 
 log.info("Iniit v %s", VERSION)
 
+
 class Job(object):
 
     def __init__(self, job=None, ad=None):
@@ -262,7 +263,6 @@ class JobCluster(Job):
         return all(x in TERMINAL_TRANS for x in data.values())
 
 
-
 class JobGroup(JobCluster):
 
     def __init__(self, clusterids):
@@ -294,7 +294,7 @@ class JobGroup(JobCluster):
 
     @property
     def _constraint(self):
-        return '||'.join(self.collapse_ranges(self.cids, batch_size=4))
+        return '||'.join(self.collapse_ranges(self.cid, batch_size=4))
 
     @property
     def status(self):
