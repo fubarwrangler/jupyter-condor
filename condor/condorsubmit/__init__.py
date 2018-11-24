@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import classad
 import htcondor
 import tempfile
@@ -140,7 +138,11 @@ class Job(object):
             time.sleep(poll_delay)
 
     def process_event(self, event, data):
-        data[self.cid] = event['EventTypeNumber']
+        if StrictVersion(VERSION) < StrictVersion('8.7.10'):
+            data[self.cid] = event['EventTypeNumber']
+        else:
+            data[self.cid] = event.type
+        log.debug(event)
 
     @staticmethod
     def _is_terminal(data):
@@ -149,17 +151,24 @@ class Job(object):
     def wait_log(self, ulog):
         """ Wait for a job to finish """
 
-        fp = open(ulog)
-        events = htcondor.read_events(fp)
-
         data = {}
-        while True:
-            try:
-                r = events.next()
-            except StopIteration:
-                log.debug("No Event but stopiter")
-                time.sleep(2.2)
-            else:
+        if StrictVersion(VERSION) < StrictVersion('8.7.10'):
+
+            fp = open(ulog)
+            events = htcondor.read_events(fp)
+            while True:
+                try:
+                    r = events.next()
+                except StopIteration:
+                    log.debug("No Event but stopiter")
+                    time.sleep(2.2)
+                else:
+                    self.process_event(r, data)
+                    log.debug(data)
+                    if self._is_terminal(data):
+                        break
+        else:
+            for r in htcondor.JobEventLog(ulog).events(None):
                 self.process_event(r, data)
                 log.debug(data)
                 if self._is_terminal(data):
@@ -246,8 +255,14 @@ class JobCluster(Job):
         return {ad['ProcId']: ad['JobStatus'] for ad in self._query(['ProcId', 'JobStatus'])}
 
     def process_event(self, event, data):
-        jobkey = '%d.%d' % (event['Cluster'], event['Proc'])
-        data[jobkey] = event['EventTypeNumber']
+        if StrictVersion(VERSION) < StrictVersion('8.7.10'):
+            jobkey = '%d.%d' % (event['Cluster'], event['Proc'])
+            data[jobkey] = event['EventTypeNumber']
+        else:
+            jobkey = '%d.%d' % (event.cluster, event.proc)
+            data[jobkey] = event.type
+        log.debug(event)
+
 
     @property
     def userlog(self):

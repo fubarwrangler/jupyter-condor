@@ -1,9 +1,8 @@
-from job import Job, JobGroup
+from condorsubmit import JobGroup
 
 import tempfile
 import cloudpickle
-import collections
-import numpy
+
 import glob
 import os
 
@@ -19,7 +18,8 @@ def condormap(fn, data, batchsize=1, tmpdir=None, cleanup=True, withdata=False):
         cloudpickle.dump(fn, fp)
 
     in_tmpl = path.join(mydir, 'in.{}')
-    jobdict = {'Executable': 'picklerunner.py', 'Arguments': func,
+    runner = path.join(path.dirname(path.abspath(__file__)), 'picklerunner.py')
+    jobdict = {'Executable': runner, 'Arguments': func, 'GetEnv': 'true',
                'transfer_input_files': func, 'Log': path.join(mydir, 'jobs.log'), }
 
     jobspecs = list()
@@ -43,19 +43,3 @@ def condormap(fn, data, batchsize=1, tmpdir=None, cleanup=True, withdata=False):
         for f in os.listdir(mydir):
             os.unlink(path.join(mydir, f))
         os.rmdir(mydir)
-
-
-# Sample function
-def logistic(r, len=10):
-    d = collections.deque(maxlen=len)
-    x = 0.4
-    for _ in xrange(5 * 10**7):
-        x = x * r * (1.0 - x)
-        d.append(x)
-    return list(d)
-
-
-for k, d in condormap(logistic, numpy.arange(3.5, 3.6, 0.01), withdata=True):
-    print sorted(d)
-    t = set(round(x, 5) for x in d)
-    print k, "Mode ", len(t)
